@@ -69,7 +69,7 @@ os.environ['PATH']
 
 # use sub directories names as classes
 #classes = [i.split(os.path.sep)[1] for i in glob.glob('dataset/*')]
-classes = [i.split(os.path.sep)[1] for i in glob.glob('E:/archive/rlvd/*')]
+classes = [i.split(os.path.sep)[1] for i in glob.glob('E:/dataset/*')]
 classes.sort()
 # some global params
 SIZE = (112, 112)
@@ -77,22 +77,23 @@ CHANNELS = 3
 NBFRAME = 5
 BS = 8
 # pattern to get videos and classes
-glob_pattern='E:/archive/rlvd/{classname}/*.mp4'
+glob_pattern='E:/dataset/{classname}/*.avi'
 #glob_pattern='dataset/{classname}/*.avi'
 # for data augmentation
+
 data_aug = keras.preprocessing.image.ImageDataGenerator(
     zoom_range=.2,
     horizontal_flip=True,
     rotation_range=5,
     width_shift_range=.2,
     height_shift_range=.2)
-# # Create video frame generator
 
+# # Create video frame generator
 train = VideoFrameGenerator(
     classes=classes, 
     glob_pattern=glob_pattern,
     nb_frames=NBFRAME,
-    split=.30, 
+    split=.35, 
     shuffle=True,
     batch_size=BS,
     target_shape=SIZE,
@@ -126,8 +127,8 @@ train = VideoFrameGenerator(
 #     nb_channel=CHANNELS,
 #     transformation=data_aug,
 #     use_frame_cache=True)
-#valid = train.get_validation_generator()
-valid = train
+valid = train.get_validation_generator()
+#valid = train
 
 #keras_video.utils.show_sample(train)
 
@@ -167,21 +168,9 @@ valid = train
 #         batch_size=32,
 #         class_mode='categorical')
 
-def build_mobilenet(shape=(224, 224, 3), nbout=3):
-    model = keras.applications.mobilenet.MobileNet(
-        include_top=False,
-        input_shape=shape,
-        weights='imagenet')
-    # Keep 9 layers to train﻿﻿
-    trainable = 9
-    for layer in model.layers[:-trainable]:
-        layer.trainable = False
-    for layer in model.layers[-trainable:]:
-        layer.trainable = True
-    output = GlobalMaxPool2D()
-    return keras.Sequential([model, output])
 
-def build_convnet(shape=(112, 112, 3)):
+
+def build_convlayer(shape=(112, 112, 3)):
     momentum = .9
     model = keras.Sequential()
 
@@ -192,7 +181,7 @@ def build_convnet(shape=(112, 112, 3)):
     
     model.add(MaxPool2D())
     
-    model.add(Conv2D(128, (5,5), padding='same', activation='relu'))
+    model.add(Conv2D(128, (3,3), padding='same', activation='relu'))
     model.add(Conv2D(128, (3,3), padding='same', activation='relu'))
     model.add(BatchNormalization(momentum=momentum))
     
@@ -214,57 +203,27 @@ def build_convnet(shape=(112, 112, 3)):
     model.add(Conv2D(1024, (3,3), padding='same', activation='relu'))
     model.add(BatchNormalization(momentum=momentum))
 
-    # model.add(MaxPool2D())
-    
-    # model.add(Conv2D(2048, (3,3), padding='same', activation='relu'))
-    # model.add(Conv2D(2048, (3,3), padding='same', activation='relu'))
-    # model.add(BatchNormalization(momentum=momentum))
-    
-    # flatten...
+
     model.add(GlobalMaxPool2D())
     return model
 
 def action_model(shape=(5, 112, 112, 3), nbout=3):
-    # Create our convnet with (112, 112, 3) input shape
-    convnet = ResNet50(include_top=False, weights='imagenet', pooling='max')
-    #convnet = build_convnet(shape[1:])
-    #convnet = build_mobilenet(shape[1:])
-    # vgg = VGG16(
-    #     include_top=False,
-    #     weights='imagenet',
-    #     input_shape=(112, 112, 3)
-    # )
-    # for layer in vgg.layers[:-4]:
-    #     layer.trainable = False
-    # then create our final model
+
+    convnet = build_convlayer(shape[1:])
     model = keras.Sequential()
-    # add the convnet with (5, 112, 112, 3) shape
-    # model.add(TimeDistributed(convnet, input_shape=shape))
     model.add(TimeDistributed(convnet, input_shape=shape))
-    # model.add(
-    #     TimeDistributed(
-    #         Flatten()
-    #     )
-    # )
-    # here, you can also use GRU or LSTM
-    # model.add(LSTM(256))
-    model.add(LSTM(2, activation='relu', return_sequences=False))
-    # and finally, we make a decision network
-    #model.add(ResNet50(include_top=False, weights='imagenet', pooling='max'))
-    # model.add(Dense(2048, activation='relu'))
-    # model.add(Dropout(.1))
+    model.add(LSTM(128, activation='tanh', return_sequences=False))
     model.add(Dense(1024, activation='relu'))
-    #model.add(Dropout(.2))
+    model.add(Dropout(.2))
     model.add(Dense(512, activation='relu'))
-    #model.add(Dropout(.2))
+    model.add(Dropout(.2))
     model.add(Dense(128, activation='relu'))
-    #model.add(Dropout(.2))
+    model.add(Dropout(.2))
     model.add(Dense(64, activation='relu'))
 
     model.add(Dense(nbout, activation='sigmoid'))
 
     print(model.summary())
-    #model.add(Dense(nbout, activation='softmax'))
     return model
 
 INSHAPE=(NBFRAME,) + SIZE + (CHANNELS,) # (5, 112, 112, 3)
@@ -284,7 +243,7 @@ model.compile(
 #     metrics=['acc']
 # )
 
-EPOCHS=200
+EPOCHS=100
 # create a "chkp" directory before to run that
 # because ModelCheckpoint will write models inside
 callbacks = [
@@ -303,3 +262,23 @@ model.fit_generator(
 )
 
 model.save('model.h5')
+
+    # and finally, we make a decision network
+    #model.add(ResNet50(include_top=False, weights='imagenet', pooling='max'))
+    #model.add(Dense(2048, activation='relu'))
+    #model.add(Dropout(.1))
+        # add the convnet with (5, 112, 112, 3) shape
+    # model.add(TimeDistributed(convnet, input_shape=shape))
+
+        #convnet = build_mobilenet(shape[1:])
+    # vgg = VGG16(
+    #     include_top=False,
+    #     weights='imagenet',
+    #     input_shape=(112, 112, 3)
+    # )
+    # for layer in vgg.layers[:-4]:
+    #     layer.trainable = False
+    # then create our final model
+
+        ## Create our convnet with (112, 112, 3) input shape
+    #convnet = ResNet50(include_top=False, weights='imagenet', pooling='max')
